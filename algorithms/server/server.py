@@ -1,3 +1,5 @@
+import copy
+
 import torch
 import os
 
@@ -12,6 +14,7 @@ from algorithms.edges.edgeNewton import edgeNewton
 from algorithms.edges.edgeAvg import edgeAvg
 from algorithms.edges.edgeGT import edgeGT
 from algorithms.edges.edgePGT import edgePGT
+from algorithms.edges.edgeSophia import edgeSophia
 
 from algorithms.server.serverbase import ServerBase
 from utils.model_utils import read_data, read_edge_data
@@ -70,6 +73,9 @@ class Server(ServerBase):
                 edge = edgeGT(device, id, train, test, model, batch_size, learning_rate, alpha, eta, L, local_epochs, optimizer)
             if(algorithm == "PGT"):
                 edge = edgePGT(device, id, train, test, model, batch_size, learning_rate, alpha, eta, L, local_epochs, optimizer)
+            if (algorithm == "Sophia"):
+                edge = edgeSophia(device, id, train, test, model, batch_size, learning_rate, alpha, eta, L, local_epochs,
+                               optimizer)
             
             self.edges.append(edge)
             self.total_train_samples += edge.train_samples
@@ -282,6 +288,32 @@ class Server(ServerBase):
 
                 self.aggregate_parameters()
 
+        elif (self.algorithm == "Sophia"):
+
+
+
+            # Communication rounds
+            for glob_iter in range(self.num_glob_iters):
+                # All edge will eun GD or SGD to obtain w*
+                self.send_parameters()
+                self.evaluate()  # still evaluate on the global model
+
+                for edge in self.edges:
+                    edge.train(self.local_epochs, glob_iter)
+
+
+                if (self.experiment):
+                    self.experiment.set_epoch(glob_iter + 1)
+                print("-------------Round number: ", glob_iter, " -------------")
+                grads = self.aggregate_grads_sophia()
+                hess = self.aggregate_hessians_sophia()
+                for i, param in enumerate(self.model.parameters()):
+                    with torch.no_grad():
+                        ratio = (grads[i].abs() / (self.eta * self.batch_size * hess[i] + 1e-15)).clamp(None, 1)
+                        step_size_neg = - self.learning_rate
+                        param.addcmul_(grads[i].sign(), ratio, value=step_size_neg)
+
+
         self.save_results()
         self.save_model()
 
@@ -320,7 +352,6 @@ class Server(ServerBase):
 
     def aggregate_hessians(self):
         aggregated_hessians = None
-        i = 0
         total_samples = 0
         for i, edge in enumerate(self.edges):
             hess = edge.send_hessian()
@@ -330,3 +361,30 @@ class Server(ServerBase):
             else:
                 aggregated_hessians.add_(hess)
         return aggregated_hessians / (i + 1 + 1e-6)
+
+    def aggregate_hessians_sophia(self):
+        aggregated_hessians = []
+        total_samples = 0
+        for i, edge in enumerate(self.edges):
+            hess = edge.send_hessian()
+            for layer_num, layer_h in enumerate(hess):
+                if i == 0:
+                    aggregated_hessians.append(torch.zeros_like(layer_h))
+                aggregated_hessians[layer_num] += layer_h
+        for layer_num, _ in enumerate(hess):
+            aggregated_hessians[layer_num] /= self.num_edges
+        return copy.deepcopy(aggregated_hessians)
+
+    def aggregate_grads_sophia(self):
+        aggregated_grads = []
+        i = 0
+        total_samples = 0
+        for i, edge in enumerate(self.edges):
+            grad = edge.send_grad()
+            for layer_num, layer_g in enumerate(grad):
+                if i == 0:
+                    aggregated_grads.append(torch.zeros_like(layer_g))
+                aggregated_grads[layer_num] += layer_g
+        for layer_num, _ in enumerate(grad):
+            aggregated_grads[layer_num] /= self.num_edges
+        return copy.deepcopy(aggregated_grads)

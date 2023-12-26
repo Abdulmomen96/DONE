@@ -24,7 +24,10 @@ def main(experiment, dataset, algorithm, model, batch_size, learning_rate, alpha
         # Generate model
         if(model == "mclr"):
             if(dataset == "human_activity"):
-                model = Mclr_Logistic(561,6).to(device), model
+                if (algorithm != "Sophia"):
+                    model = Mclr_Logistic(561, 6).to(device), model
+                else:
+                    model = Mclr_CrossEntropy(561, 6).to(device), model
             else:
                 model = Mclr_Logistic().to(device), model
 
@@ -86,9 +89,9 @@ if __name__ == "__main__":
 
 # Create an experiment with your api key:
         experiment = Experiment(
-        api_key="VtHmmkcG2ngy1isOwjkm5sHhP",
-        project_name="done-supplement",
-        workspace="federated-learning-exp",
+        api_key="q24VqIVkFNEOugLA3T0YFFFvE",
+        project_name="sophia",
+        workspace="abdulmomen96",
     )
         hyper_params = {
             "dataset":args.dataset,

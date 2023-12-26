@@ -33,10 +33,10 @@ class Edgebase:
         self.eta = eta
         self.L = L
         self.local_epochs = local_epochs
-        self.trainloader = DataLoader(train_data, self.batch_size)
+        self.trainloader = DataLoader(train_data, self.batch_size, shuffle=True)
         self.testloader = DataLoader(test_data, self.batch_size)
         self.testloaderfull = DataLoader(test_data, self.test_samples)
-        self.trainloaderfull = DataLoader(train_data, self.train_samples)
+        self.trainloaderfull = DataLoader(train_data, self.train_samples, shuffle=True)
         self.iter_trainloader = iter(self.trainloader)
         self.iter_testloader = iter(self.testloader)
 
@@ -101,6 +101,7 @@ class Edgebase:
                 test_acc += torch.sum(((output >= 0.5) == y).type(torch.int)).item()
             else:
                 test_acc += (torch.sum(torch.argmax(output, dim=1) == y)).item()
+
             loss += self.loss(output, y)
         return test_acc, loss, y.shape[0]
 
@@ -115,7 +116,11 @@ class Edgebase:
                 train_acc += torch.sum(((output >= 0.5) == y).type(torch.int)).item()
             else:
                 train_acc += (torch.sum(torch.argmax(output, dim=1) == y)).item()
+
+
             loss += self.loss(output, y)
+            #print(output, y)
+
         return train_acc, loss, self.train_samples
 
     def update_direction(self):
