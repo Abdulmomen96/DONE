@@ -307,11 +307,17 @@ class Server(ServerBase):
                 print("-------------Round number: ", glob_iter, " -------------")
                 grads = self.aggregate_grads_sophia()
                 hess = self.aggregate_hessians_sophia()
+                winrate = 0
+                param_count = 0
                 for i, param in enumerate(self.model.parameters()):
                     with torch.no_grad():
                         ratio = (grads[i].abs() / (self.eta * self.batch_size * hess[i] + 1e-15)).clamp(None, 1)
+                        param_count += np.equal(ratio.numpy(), 1.0).reshape(-1).shape[0]
+                        winrate += np.mean(np.equal(ratio.numpy(), 1.0).reshape(-1)) * np.equal(ratio.numpy(), 1.0).reshape(-1).shape[0]
+
                         step_size_neg = - self.learning_rate
                         param.addcmul_(grads[i].sign(), ratio, value=step_size_neg)
+                print(f"Clipping rate = {1 - (winrate / param_count)}")
 
 
         self.save_results()
