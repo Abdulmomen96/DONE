@@ -366,25 +366,27 @@ class Server(ServerBase):
         aggregated_hessians = []
         total_samples = 0
         for i, edge in enumerate(self.edges):
-            hess = edge.send_hessian()
+            #hess = edge.send_hessian()
+            hess = edge.h
             for layer_num, layer_h in enumerate(hess):
                 if i == 0:
                     aggregated_hessians.append(torch.zeros_like(layer_h))
                 aggregated_hessians[layer_num] += layer_h
         for layer_num, _ in enumerate(hess):
             aggregated_hessians[layer_num] /= self.num_edges
-        return copy.deepcopy(aggregated_hessians)
+        return aggregated_hessians
 
     def aggregate_grads_sophia(self):
         aggregated_grads = []
         i = 0
         total_samples = 0
         for i, edge in enumerate(self.edges):
-            grad = edge.send_grad()
+            #grad = edge.send_grad()
+            grad = edge.m
             for layer_num, layer_g in enumerate(grad):
                 if i == 0:
                     aggregated_grads.append(torch.zeros_like(layer_g))
                 aggregated_grads[layer_num] += layer_g
         for layer_num, _ in enumerate(grad):
             aggregated_grads[layer_num] /= self.num_edges
-        return copy.deepcopy(aggregated_grads)
+        return aggregated_grads
