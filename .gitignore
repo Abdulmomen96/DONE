@@ -131,3 +131,4 @@ dmypy.json
 
 **/*mnist_train.json
 **/*mnist_test.json
+**/*.zip
