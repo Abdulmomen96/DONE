@@ -188,7 +188,7 @@ class ServerBase:
             self.experiment.log_metric("train_acc",train_acc)
             self.experiment.log_metric("train_loss",train_loss)
         #print("stats_train[1]",stats_train[3][0])
-        print("Average Global Accuracy          : ", glob_acc)
+        print("Average Test Accuracy          : ", glob_acc)
         print("Average Global Trainning Accuracy: ", train_acc)
         print("Average Global Trainning Loss    : ",train_loss)
 

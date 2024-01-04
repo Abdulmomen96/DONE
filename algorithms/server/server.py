@@ -39,7 +39,7 @@ class Server(ServerBase):
             self.optimal_loss_unreg = data[-1]
             self.optimal_loss_reg = (self.L / 2) * (np.linalg.norm(data[-1]) ** 2)
 
-        total_edges = len(data[0])
+        total_edges = num_edges#len(data[0])
 
         for i in range(total_edges):
 
