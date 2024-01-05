@@ -269,8 +269,7 @@ class SophiaG(Optimizer):
 
                 if self.defaults['capturable']:
                     bs = torch.ones((1,), dtype=torch.float, device=p.device) * bs
-            self.m = copy.deepcopy(exp_avgs)
-            self.h = copy.deepcopy(hessian)
+
 
             sophiag(params_with_grad,
                     grads,
@@ -285,6 +284,9 @@ class SophiaG(Optimizer):
                     weight_decay=group['weight_decay'],
                     maximize=group['maximize'],
                     capturable=group['capturable'])
+
+            self.m = copy.deepcopy(exp_avgs)
+            self.h = copy.deepcopy(hessian)
 
         return loss
 
