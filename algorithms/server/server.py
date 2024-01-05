@@ -294,17 +294,19 @@ class Server(ServerBase):
 
             # Communication rounds
             for glob_iter in range(self.num_glob_iters):
+
+                if (self.experiment):
+                    self.experiment.set_epoch(glob_iter + 1)
+                print("-------------Round number: ", glob_iter, " -------------")
                 # All edge will eun GD or SGD to obtain w*
+                self.evaluate()
                 self.send_parameters()
-                self.evaluate()  # still evaluate on the global model
+                #self.evaluate()  # still evaluate on the global model
 
                 for edge in self.edges:
                     edge.train(self.local_epochs, glob_iter)
 
 
-                if (self.experiment):
-                    self.experiment.set_epoch(glob_iter + 1)
-                print("-------------Round number: ", glob_iter, " -------------")
                 grads = self.aggregate_grads_sophia()
                 hess = self.aggregate_hessians_sophia()
                 winrate = 0
@@ -314,10 +316,12 @@ class Server(ServerBase):
                         ratio = (grads[i].abs() / (self.eta * self.batch_size * hess[i] + 1e-15)).clamp(None, 1)
                         param_count += np.equal(ratio.numpy(), 1.0).reshape(-1).shape[0]
                         winrate += np.mean(np.equal(ratio.numpy(), 1.0).reshape(-1)) * np.equal(ratio.numpy(), 1.0).reshape(-1).shape[0]
-
                         step_size_neg = - self.learning_rate
                         param.addcmul_(grads[i].sign(), ratio, value=step_size_neg)
+                        #print(grads[i].sign())
                 print(f"Clipping rate = {1 - (winrate / param_count)}")
+
+
 
 
         self.save_results()

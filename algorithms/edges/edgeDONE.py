@@ -36,7 +36,7 @@ class edgeDONE(Edgebase):
                 model_grad.grad = new_grads[idx].clone()
 
     def get_full_grad(self):
-        for X, y in self.trainloaderfull: #i, (X, y) in zip(range(1), self.trainloaderfull):
+        for i, (X, y) in zip(range(1), self.trainloaderfull):
             X, y = (X.to(self.device), y.to(self.device))
             self.model.zero_grad()
             output = self.model(X)
@@ -52,7 +52,7 @@ class edgeDONE(Edgebase):
                 d.data =  - local_param.grad.data.clone()
             
         self.model.zero_grad()
-        self.model.train()
+        #self.model.train()
 
         # Sample a mini-batch (D_i)
         (X, y) = self.get_next_train_batch()

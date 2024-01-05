@@ -23,7 +23,7 @@ class edgeSophia(Edgebase):
         # Keep track of local hessians and exp_avg
         self.m = []
         self.h = []
-        self.k = 4
+        self.k = 5
         for group in self.optimizer.param_groups:
             for param in group['params']:
                 self.m.append(torch.zeros_like(param, memory_format=torch.preserve_format))
@@ -37,17 +37,15 @@ class edgeSophia(Edgebase):
         for i, (X, y) in zip(range(1), self.trainloaderfull):
             X, y = X.to(self.device), y.to(self.device)
 
-            self.optimizer.step()
+            #self.optimizer.zero_grad()
             logits = self.model(X)
             loss = self.loss(logits, y)
             loss.backward()
             self.optimizer.step(bs=self.batch_size)
-            self.m, self.h = self.optimizer.get_m_h()
             self.optimizer.zero_grad(set_to_none=True)
 
-            if glob_iter % self.k != self.k - 1:
-                continue
-            else:
+            if glob_iter % self.k == 0:
+
                 # update hessian EMA
                 logits = self.model(X)
                 samp_dist = torch.distributions.Categorical(logits=logits)
@@ -57,6 +55,7 @@ class edgeSophia(Edgebase):
                 self.optimizer.update_hessian()
                 self.optimizer.zero_grad(set_to_none=True)
 
+            self.m, self.h = self.optimizer.get_m_h()
 
     def send_grad(self):
         return copy.deepcopy(self.m)
