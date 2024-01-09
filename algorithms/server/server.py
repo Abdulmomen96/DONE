@@ -289,6 +289,8 @@ class Server(ServerBase):
                 self.aggregate_parameters()
 
         elif (self.algorithm == "Sophia"):
+            param_count = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+            print(f"Total number of parameters: {param_count}")
 
 
 
@@ -299,7 +301,8 @@ class Server(ServerBase):
                     self.experiment.set_epoch(glob_iter + 1)
                 print("-------------Round number: ", glob_iter, " -------------")
                 # All edge will eun GD or SGD to obtain w*
-                self.evaluate()
+                if glob_iter != 0:
+                    self.evaluate()
                 self.send_parameters()
                 #self.evaluate()  # still evaluate on the global model
 
@@ -310,15 +313,16 @@ class Server(ServerBase):
                 grads = self.aggregate_grads_sophia()
                 hess = self.aggregate_hessians_sophia()
                 winrate = 0
-                param_count = 0
                 for i, param in enumerate(self.model.parameters()):
                     with torch.no_grad():
                         ratio = (grads[i].abs() / (self.eta * self.batch_size * hess[i] + 1e-15)).clamp(None, 1)
-                        param_count += np.equal(ratio.numpy(), 1.0).reshape(-1).shape[0]
+                        #param_count += np.equal(ratio.numpy(), 1.0).reshape(-1).shape[0]
                         winrate += np.mean(np.equal(ratio.numpy(), 1.0).reshape(-1)) * np.equal(ratio.numpy(), 1.0).reshape(-1).shape[0]
+                        param.mul_(1 - self.learning_rate * self.L)
                         step_size_neg = - self.learning_rate
                         param.addcmul_(grads[i].sign(), ratio, value=step_size_neg)
                         #print(grads[i].sign())
+                print(winrate)
                 print(f"Clipping rate = {1 - (winrate / param_count)}")
 
 
