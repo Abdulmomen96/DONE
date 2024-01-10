@@ -36,29 +36,33 @@ class edgeDONE(Edgebase):
                 model_grad.grad = new_grads[idx].clone()
 
     def get_full_grad(self):
-        for i, (X, y) in zip(range(1), self.trainloaderfull):
+        for X, y in self.trainloaderfull:
             X, y = (X.to(self.device), y.to(self.device))
+            if self.model == "logistic_regression":
+                y = y.to(torch.float32)
             self.model.zero_grad()
             output = self.model(X)
-            loss = self.loss(output, y)
+            loss = self.loss(output, y) + self.regularize()
             loss.backward()
 
     def train(self, epochs, glob_iter):
         # Set initial value for d0, d0 can be 0 or can be any value
         for d, server_param, local_param in zip(self.dt, self.server_grad, self.model.parameters()):
-            if(self.batch_size == 0):
-                d.data =  - server_param.grad.data.clone()
+            if (self.batch_size != 0):
+                d.data = - server_param.grad.data.clone()
             else:
-                d.data =  - local_param.grad.data.clone()
-            
+                d.data = - local_param.grad.data.clone()
+
         self.model.zero_grad()
-        #self.model.train()
+        self.model.train()
 
         # Sample a mini-batch (D_i)
         (X, y) = self.get_next_train_batch()
+        if self.model == "logistic_regression":
+            y = y.to(torch.float32)
         loss = self.total_loss(X=X, y=y, full_batch=False, regularize=True)
         # loss.backward(create_graph=True)
-        #grads = []
+        # grads = []
         # Richardson iteration
         for i in range(1, self.local_epochs + 1):  # R
             hess_vec_prods = self.hessian_vec_prod(loss, list(self.model.parameters()), self.dt)
@@ -72,4 +76,3 @@ class edgeDONE(Edgebase):
         self.model.zero_grad()
         hv = torch.autograd.grad(grads, params, dt, only_inputs=True, create_graph=True, retain_graph=True)
         return hv
-

@@ -322,8 +322,7 @@ class Server(ServerBase):
                         step_size_neg = - self.learning_rate
                         param.addcmul_(grads[i].sign(), ratio, value=step_size_neg)
                         #print(grads[i].sign())
-                print(winrate)
-                print(f"Clipping rate = {1 - (winrate / param_count)}")
+                print(f"Win rate = {1 - (winrate / param_count)}")
 
 
 
