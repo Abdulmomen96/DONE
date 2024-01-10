@@ -132,3 +132,6 @@ dmypy.json
 **/*mnist_train.json
 **/*mnist_test.json
 **/*.zip
+./data/Cifar10/data/cifar-10-batches-py/*
+**/*.json
+**/*.gz
