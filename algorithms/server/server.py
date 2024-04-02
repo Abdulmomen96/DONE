@@ -19,6 +19,7 @@ from algorithms.edges.edgeSophia import edgeSophia
 from algorithms.server.serverbase import ServerBase
 from utils.model_utils import read_data, read_edge_data
 import numpy as np
+import time
 
 # Implementation for Central Server
 class Server(ServerBase):
@@ -155,6 +156,8 @@ class Server(ServerBase):
             self.save_model()
 
         elif self.algorithm == "GD" or self.algorithm == "FedAvg":
+            round_time = [0]
+            start_time = time.time()
             for glob_iter in range(self.num_glob_iters):
                 if(self.experiment):
                     self.experiment.set_epoch( glob_iter + 1)
@@ -166,8 +169,12 @@ class Server(ServerBase):
                 for edge in self.selected_edges:
                     edge.train(self.local_epochs, glob_iter)
                 self.aggregate_parameters()
+                round_time.append(time.time() - start_time)
+            np.save("Fed_AVG_time.npy", np.array(round_time))
                 
         elif self.algorithm == "DONE": # Second Order method
+            round_time = [0]
+            start_time = time.time()
             for glob_iter in range(self.num_glob_iters):
                 if(self.experiment):
                     self.experiment.set_epoch( glob_iter + 1)
@@ -192,6 +199,8 @@ class Server(ServerBase):
                     edge.train(self.local_epochs, glob_iter)
 
                 self.aggregate_parameters()
+                round_time.append(time.time() - start_time)
+            np.save("DONE_time.npy", np.array(round_time))
 
         elif self.algorithm == "FEDL":
             for glob_iter in range(self.num_glob_iters):
@@ -289,6 +298,8 @@ class Server(ServerBase):
                 self.aggregate_parameters()
 
         elif (self.algorithm == "Sophia"):
+            round_time = [0]
+            start_time = time.time()
             param_count = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
             print(f"Total number of parameters: {param_count}")
 
@@ -317,12 +328,14 @@ class Server(ServerBase):
                     with torch.no_grad():
                         ratio = (grads[i].abs() / (self.eta * self.batch_size * hess[i] + 1e-15)).clamp(None, 1)
                         #param_count += np.equal(ratio.numpy(), 1.0).reshape(-1).shape[0]
-                        winrate += np.mean(np.equal(ratio.numpy(), 1.0).reshape(-1)) * np.equal(ratio.numpy(), 1.0).reshape(-1).shape[0]
+                        winrate += np.mean(np.equal(ratio.cpu().numpy(), 1.0).reshape(-1)) * np.equal(ratio.cpu().numpy(), 1.0).reshape(-1).shape[0]
                         param.mul_(1 - self.learning_rate * self.L)
                         step_size_neg = - self.learning_rate
                         param.addcmul_(grads[i].sign(), ratio, value=step_size_neg)
                         #print(grads[i].sign())
                 print(f"Win rate = {1 - (winrate / param_count)}")
+                round_time.append(time.time() - start_time)
+            np.save("Sophia_time.npy", np.array(round_time))
 
 
 

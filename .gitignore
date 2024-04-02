@@ -135,3 +135,4 @@ dmypy.json
 ./data/Cifar10/data/cifar-10-batches-py/*
 **/*.json
 **/*.gz
+venv/*
