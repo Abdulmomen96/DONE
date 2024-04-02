@@ -12,10 +12,10 @@ def suffer_data(data):
     data_x = data['x']
     data_y = data['y']
         # randomly shuffle data
-    np.random.seed(100)
-    rng_state = np.random.get_state()
+    #np.random.seed(100)
+    #rng_state = np.random.get_state()
     np.random.shuffle(data_x)
-    np.random.set_state(rng_state)
+    #np.random.set_state(rng_state)
     np.random.shuffle(data_y)
     return (data_x, data_y)
     
@@ -28,10 +28,10 @@ def batch_data(data, batch_size):
     data_y = data['y']
 
     # randomly shuffle data
-    np.random.seed(100)
-    rng_state = np.random.get_state()
+    #np.random.seed(100)
+    #rng_state = np.random.get_state()
     np.random.shuffle(data_x)
-    np.random.set_state(rng_state)
+    #np.random.set_state(rng_state)
     np.random.shuffle(data_y)
 
     # loop through mini-batches
@@ -58,10 +58,10 @@ def get_batch_sample(data, batch_size):
     data_x = data['x']
     data_y = data['y']
 
-    np.random.seed(100)
-    rng_state = np.random.get_state()
+    #np.random.seed(100)
+    #rng_state = np.random.get_state()
     np.random.shuffle(data_x)
-    np.random.set_state(rng_state)
+    #np.random.set_state(rng_state)
     np.random.shuffle(data_y)
 
     batched_x = data_x[0:batch_size]
