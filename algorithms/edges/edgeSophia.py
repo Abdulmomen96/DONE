@@ -21,13 +21,12 @@ class edgeSophia(Edgebase):
         self.optimizer = SophiaG(self.model.parameters(), lr=learning_rate, betas=alpha, rho=eta,
                                  weight_decay=L, maximize=False, capturable=False)
         # Keep track of local hessians and exp_avg
-        self.m = []
-        self.h = []
+        self.param_num_list = [param.numel() for param in self.model.parameters()]
+        self.total_param_num =sum(self.param_num_list)
+
+        self.m = torch.zeros((self.total_param_num, 1))
+        self.h = torch.zeros((self.total_param_num, 1))
         self.k = 5
-        for group in self.optimizer.param_groups:
-            for param in group['params']:
-                self.m.append(torch.zeros_like(param, memory_format=torch.preserve_format))
-                self.h.append(torch.zeros_like(param, memory_format=torch.preserve_format))
 
 
 
@@ -54,8 +53,15 @@ class edgeSophia(Edgebase):
                 loss_sampled.backward()
                 self.optimizer.update_hessian()
                 self.optimizer.zero_grad(set_to_none=True)
-
-            self.m, self.h = self.optimizer.get_m_h()
+                m, h = self.optimizer.get_m_h()
+                self.m = torch.cat([param.detach().clone().view(-1) for param in m], dim=0).reshape(self.total_param_num, 1)
+                self.h = torch.cat([param.detach().clone().view(-1) for param in h], dim=0).reshape(self.total_param_num, 1)
+            else:
+                m, h = self.optimizer.get_m_h()
+                self.m = torch.cat([param.detach().clone().view(-1) for param in m], dim=0).reshape(
+                    self.total_param_num, 1)
+                self.h = torch.cat([param.detach().clone().view(-1) for param in h], dim=0).reshape(
+                    self.total_param_num, 1)
 
     def send_grad(self):
         return copy.deepcopy(self.m)

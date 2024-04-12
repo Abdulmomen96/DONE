@@ -263,9 +263,9 @@ class SophiaG(Optimizer):
                 if 'hessian' not in state.keys():
                     state['hessian'] = torch.zeros_like(p, memory_format=torch.preserve_format)
 
-                exp_avgs.append(state['exp_avg'])
+                exp_avgs.append(state['exp_avg'].detach().clone())
                 state_steps.append(state['step'])
-                hessian.append(state['hessian'])
+                hessian.append(state['hessian'].detach().clone())
 
                 if self.defaults['capturable']:
                     bs = torch.ones((1,), dtype=torch.float, device=p.device) * bs
