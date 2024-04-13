@@ -48,7 +48,7 @@ class Server(ServerBase):
         self.alpha_server_G = torch.as_tensor(1)
         self.alpha_users_H = torch.ones((total_edges))
         self.alpha_server_H = torch.as_tensor(1)
-        self.SNR_db_total = 35
+        self.SNR_db_total = 1
         # Done 23 20 21 24
         # To be done 23 25 30 35 40
         for i in range(total_edges):
@@ -97,6 +97,12 @@ class Server(ServerBase):
                 edge = edgeSophia(device, id, train, test, model, batch_size, learning_rate, alpha, eta, L,
                                   local_epochs,
                                   optimizer)
+            if (algorithm == "Sophia_OTA"):
+                edge = edgeSophia(device, id, train, test, model, batch_size, learning_rate, alpha, eta, L,
+                                  local_epochs,
+                                  optimizer)
+
+
 
             self.edges.append(edge)
             self.total_train_samples += edge.train_samples
@@ -344,6 +350,42 @@ class Server(ServerBase):
                         # print(grads[i].sign())
                 print(f"Win rate = {1 - (winrate / param_count)}")
 
+        elif (self.algorithm == "Sophia_OTA"):
+            param_count = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+            print(f"Total number of parameters: {param_count}")
+
+            # Communication rounds
+            for glob_iter in range(self.num_glob_iters):
+
+                if (self.experiment):
+                    self.experiment.set_epoch(glob_iter + 1)
+                print("-------------Round number: ", glob_iter, " -------------")
+                # All edge will eun GD or SGD to obtain w*
+                if glob_iter != 0:
+                    self.evaluate()
+                self.send_parameters()
+                # self.evaluate()  # still evaluate on the global model
+
+                for edge in self.edges:
+                    edge.train(self.local_epochs, glob_iter)
+
+                grads = self.aggregate_grads_sophia_OTA()
+
+                hess = self.aggregate_hessians_sophia_OTA()
+
+                winrate = 0
+                for i, param in enumerate(self.model.parameters()):
+                    with torch.no_grad():
+                        ratio = (grads[i].abs() / (self.eta * self.batch_size * hess[i] + 1e-15)).clamp(None, 1)
+                        # param_count += np.equal(ratio.numpy(), 1.0).reshape(-1).shape[0]
+                        winrate += np.mean(np.equal(ratio.numpy(), 1.0).reshape(-1)) * \
+                                   np.equal(ratio.numpy(), 1.0).reshape(-1).shape[0]
+                        param.mul_(1 - self.L)
+                        step_size_neg = - self.learning_rate
+                        param.addcmul_(grads[i].sign(), ratio, value=step_size_neg)
+                        # print(grads[i].sign())
+                print(f"Win rate = {1 - (winrate / param_count)}")
+
         self.save_results()
         self.save_model()
 
@@ -392,14 +434,14 @@ class Server(ServerBase):
                 aggregated_hessians.add_(hess)
         return aggregated_hessians / (i + 1 + 1e-6)
 
-    def aggregate_hessians_sophia(self):
+    def aggregate_hessians_sophia_OTA(self):
         # Wireless settings
         Nc = 6000
         param_num_list = [param.numel() for param in self.model.parameters()]
         Nd = sum(param_num_list)
         Ns = np.ceil(Nd / Nc)
         h_thr = 1e-2
-        SNR_db = self.SNR_db_total
+        SNR_db = 25#self.SNR_db_total
         SNR = 10 ** (SNR_db / 10)
         P_t = 1e-3
 
@@ -444,7 +486,7 @@ class Server(ServerBase):
                 for j, edge in enumerate(self.edges):
                     # Ensure the last slice doesn't go out of bounds
 
-                    S_n = torch.sqrt(self.alpha_server_H) * torch.multiply(edge.h[i:slice_end, :].detach().clone(),torch.as_tensor(transmittable_list[j][:min(Nc, Nd - i),:]))
+                    S_n = torch.sqrt(self.alpha_server_H) * torch.multiply(torch.nan_to_num(edge.h[i:slice_end, :], posinf=0.0, neginf=-0.0).detach().clone(),torch.as_tensor(transmittable_list[j][:min(Nc, Nd - i),:]))
 
 
                     # print(f"User: {j}, alpha: {alpha_users[j]}")
@@ -468,14 +510,14 @@ class Server(ServerBase):
                 #    f"H_Noise: {torch.sum(torch.square(P_noise)) / Nd},  indicators: {torch.mean(total_indicators[slice_end - 10:slice_end - 1, :])}, Pavg: {torch.sum(P_avg)}, alpha: {self.alpha_server_H}, P_Noise: {torch.mean(P_noise)}")
                 #print(aggregated_hess[i:slice_end, :])
 
-            layer_wise_hess = [x.view(y.shape).detach().clone() for x, y in zip(torch.split(aggregated_hess,
+            layer_wise_hess = [torch.nan_to_num(x.view(y.shape), posinf=0.0, neginf=-0.0).detach().clone() for x, y in zip(torch.split(aggregated_hess,
                                                                             split_size_or_sections=param_num_list,
                                                                             dim=0),
                                                                 self.model.parameters())]
 
         return layer_wise_hess
 
-    def aggregate_grads_sophia(self):
+    def aggregate_grads_sophia_OTA(self):
         # Wireless settings
         Nc = 6000
         param_num_list = [param.numel() for param in self.model.parameters()]
@@ -552,6 +594,55 @@ class Server(ServerBase):
                 #print(
                 #    f"G_Noise: {torch.sum(torch.square(P_noise))  / Nd},  indicators: {torch.mean(total_indicators[slice_end - 10:slice_end - 1, :])}, Pavg: {torch.sum(P_avg)}, alpha: {self.alpha_server_G}")
                 #print(aggregated_grad[i:slice_end, :])
+
+            layer_wise_grad = [x.view(y.shape).detach().clone() for x, y in zip(torch.split(aggregated_grad,
+                                                                           split_size_or_sections=param_num_list,
+                                                                           dim=0),
+                                                               self.model.parameters())]
+
+        return layer_wise_grad
+
+
+
+
+
+    def aggregate_hessians_sophia(self):
+
+        param_num_list = [param.numel() for param in self.model.parameters()]
+        Nd = sum(param_num_list)
+        aggregated_hess = torch.zeros((Nd, 1))
+
+        with torch.no_grad():
+
+
+
+
+            for j, edge in enumerate(self.edges):
+                aggregated_hess += edge.h
+
+
+
+
+            layer_wise_hess = [x.view(y.shape).detach().clone() for x, y in zip(torch.split(aggregated_hess,
+                                                                            split_size_or_sections=param_num_list,
+                                                                            dim=0),
+                                                                self.model.parameters())]
+
+        return layer_wise_hess
+
+    def aggregate_grads_sophia(self):
+        param_num_list = [param.numel() for param in self.model.parameters()]
+        Nd = sum(param_num_list)
+        aggregated_grad = torch.zeros((Nd, 1))
+
+        with torch.no_grad():
+
+            for j, edge in enumerate(self.edges):
+
+                # print(f"User: {j}, alpha: {alpha_users[j]}")
+
+                aggregated_grad += edge.m
+
 
             layer_wise_grad = [x.view(y.shape).detach().clone() for x, y in zip(torch.split(aggregated_grad,
                                                                            split_size_or_sections=param_num_list,
