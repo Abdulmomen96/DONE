@@ -44,11 +44,16 @@ class Server(ServerBase):
 
 
         total_edges = len(data[0])
-        self.alpha_users_G = torch.ones((total_edges))
-        self.alpha_server_G = torch.as_tensor(1)
-        self.alpha_users_H = torch.ones((total_edges))
-        self.alpha_server_H = torch.as_tensor(1)
-        self.SNR_db_total = 1
+        self.alpha_users_G = torch.ones((total_edges)).to(self.device)
+        self.alpha_server_G = torch.as_tensor(1).to(self.device)
+        self.alpha_users_H = torch.ones((total_edges)).to(self.device)
+        self.alpha_server_H = torch.as_tensor(1).to(self.device)
+        self.SNR_db_total = 25
+
+        self.device = device
+        #torch.set_default_device(self.device)
+
+        
         # Done 23 20 21 24
         # To be done 23 25 30 35 40
         for i in range(total_edges):
@@ -342,8 +347,8 @@ class Server(ServerBase):
                     with torch.no_grad():
                         ratio = (grads[i].abs() / (self.eta * self.batch_size * hess[i] + 1e-15)).clamp(None, 1)
                         # param_count += np.equal(ratio.numpy(), 1.0).reshape(-1).shape[0]
-                        winrate += np.mean(np.equal(ratio.numpy(), 1.0).reshape(-1)) * \
-                                   np.equal(ratio.numpy(), 1.0).reshape(-1).shape[0]
+                        winrate += np.mean(np.equal(ratio.cpu().numpy(), 1.0).reshape(-1)) * \
+                                   np.equal(ratio.cpu().numpy(), 1.0).reshape(-1).shape[0]
                         param.mul_(1 - self.L)
                         step_size_neg = - self.learning_rate
                         param.addcmul_(grads[i].sign(), ratio, value=step_size_neg)
@@ -378,8 +383,8 @@ class Server(ServerBase):
                     with torch.no_grad():
                         ratio = (grads[i].abs() / (self.eta * self.batch_size * hess[i] + 1e-15)).clamp(None, 1)
                         # param_count += np.equal(ratio.numpy(), 1.0).reshape(-1).shape[0]
-                        winrate += np.mean(np.equal(ratio.numpy(), 1.0).reshape(-1)) * \
-                                   np.equal(ratio.numpy(), 1.0).reshape(-1).shape[0]
+                        winrate += np.mean(np.equal(ratio.cpu().numpy(), 1.0).reshape(-1)) * \
+                                   np.equal(ratio.cpu().numpy(), 1.0).reshape(-1).shape[0]
                         param.mul_(1 - self.L)
                         step_size_neg = - self.learning_rate
                         param.addcmul_(grads[i].sign(), ratio, value=step_size_neg)
@@ -441,13 +446,13 @@ class Server(ServerBase):
         Nd = sum(param_num_list)
         Ns = np.ceil(Nd / Nc)
         h_thr = 1e-2
-        SNR_db = 25#self.SNR_db_total
+        SNR_db = self.SNR_db_total
         SNR = 10 ** (SNR_db / 10)
         P_t = 1e-3
 
-        total_indicators = torch.zeros((Nd, 1))
+        total_indicators = torch.zeros((Nd, 1)).to(self.device)
 
-        aggregated_hess = torch.zeros((Nd, 1))
+        aggregated_hess = torch.zeros((Nd, 1)).to(self.device)
 
         with torch.no_grad():
             for i in range(0, Nd, Nc):
@@ -461,8 +466,8 @@ class Server(ServerBase):
                     H_amp = np.real(np.conjugate(H) * H)
                     transmittable[H_amp < h_thr] = 0.0
                     H_amp = np.multiply(H_amp, transmittable)
-                    H_amp_list.append(copy.deepcopy(H_amp))
-                    transmittable_list.append(copy.deepcopy(transmittable))
+                    H_amp_list.append(copy.deepcopy(torch.as_tensor(H_amp)).to(self.device))
+                    transmittable_list.append(torch.as_tensor(copy.deepcopy(transmittable)).to(self.device))
                     # Transmitted signal
                     # print(f"{i} : {slice_end},    {min(Nc, Nd - i)}")
                     # Calculate the average power for each client
@@ -492,7 +497,7 @@ class Server(ServerBase):
                     # print(f"User: {j}, alpha: {alpha_users[j]}")
 
                     aggregated_hess[i:slice_end, :] += torch.multiply(
-                        torch.as_tensor(transmittable[:min(Nc, Nd - i), :]),
+                        transmittable_list[j][:min(Nc, Nd - i), :],
                         S_n)
                     total_indicators[i:slice_end, :] += transmittable_list[j][:min(Nc, Nd - i), :]
 
@@ -501,11 +506,14 @@ class Server(ServerBase):
 
                 # Average the model parameter
                 P_avg = torch.div(torch.square(aggregated_hess[i:slice_end, :]),
-                                  total_indicators[i:slice_end, :])
-                P_noise = torch.nan_to_num(torch.multiply(torch.sqrt(torch.nan_to_num(torch.div(P_avg, (2 * self.alpha_server_H * SNR)), posinf=0.0, neginf=0.0)),torch.randn((min(Nc, Nd - i), 1))), posinf=0.0, neginf=0.0)
+                                  total_indicators[i:slice_end, :]).to(self.device)
+                term_a = torch.sqrt(torch.nan_to_num(torch.div(P_avg, (2 * self.alpha_server_H * SNR)), posinf=0.0, neginf=0.0)).to(self.device)
+                noise_term = torch.randn((min(Nc, Nd - i), 1)).to(self.device)
+                P_noise = torch.nan_to_num(torch.multiply(term_a, noise_term), posinf=0.0, neginf=0.0)
                 aggregated_hess[i:slice_end, :] = torch.add(
                     torch.nan_to_num(torch.div(aggregated_hess[i:slice_end, :],
-                              torch.sqrt(torch.as_tensor(self.alpha_server_H)) * total_indicators[i:slice_end, :]), posinf=0.0, neginf=0.0), P_noise)
+                                               torch.sqrt(self.alpha_server_H) * total_indicators[i:slice_end, :]),
+                                     posinf=0.0, neginf=0.0), P_noise)
                 #print(
                 #    f"H_Noise: {torch.sum(torch.square(P_noise)) / Nd},  indicators: {torch.mean(total_indicators[slice_end - 10:slice_end - 1, :])}, Pavg: {torch.sum(P_avg)}, alpha: {self.alpha_server_H}, P_Noise: {torch.mean(P_noise)}")
                 #print(aggregated_hess[i:slice_end, :])
@@ -528,9 +536,9 @@ class Server(ServerBase):
         SNR = 10 ** (SNR_db / 10)
         P_t = 1e-3
 
-        total_indicators = torch.zeros((Nd, 1))
+        total_indicators = torch.zeros((Nd, 1)).to(self.device)
 
-        aggregated_grad = torch.zeros((Nd, 1))
+        aggregated_grad = torch.zeros((Nd, 1)).to(self.device)
 
         with torch.no_grad():
             for i in range(0, Nd, Nc):
@@ -544,8 +552,8 @@ class Server(ServerBase):
                     H_amp = np.real(np.conjugate(H) * H)
                     transmittable[H_amp < h_thr] = 0.0
                     H_amp = np.multiply(H_amp, transmittable)
-                    H_amp_list.append(copy.deepcopy(H_amp))
-                    transmittable_list.append(copy.deepcopy(transmittable))
+                    H_amp_list.append(copy.deepcopy(torch.as_tensor(H_amp)).to(self.device))
+                    transmittable_list.append(torch.as_tensor(copy.deepcopy(transmittable)).to(self.device))
                     # Transmitted signal
                     # print(f"{i} : {slice_end},    {min(Nc, Nd - i)}")
                     # Calculate the average power for each client
@@ -569,14 +577,15 @@ class Server(ServerBase):
                     # Ensure the last slice doesn't go out of bounds
 
                     S_n = torch.sqrt(self.alpha_server_G) * torch.multiply(edge.m[i:slice_end, :].detach().clone(),
-                                                                           torch.as_tensor(
                                                                                transmittable_list[j][:min(Nc, Nd - i),
-                                                                               :]))
+                                                                               :])
 
                     # print(f"User: {j}, alpha: {alpha_users[j]}")
 
+                    #print(S_n.get_device(), transmittable_list[j].get_device(), aggregated_grad.get_device())
+
                     aggregated_grad[i:slice_end, :] += torch.multiply(
-                        torch.as_tensor(transmittable[:min(Nc, Nd - i), :]),
+                        transmittable_list[j][:min(Nc, Nd - i), :],
                         S_n)
                     total_indicators[i:slice_end, :] += transmittable_list[j][:min(Nc, Nd - i), :]
 
@@ -585,8 +594,10 @@ class Server(ServerBase):
 
                 # Average the model parameter
                 P_avg = torch.div(torch.square(aggregated_grad[i:slice_end, :]),
-                                  total_indicators[i:slice_end, :])
-                P_noise = torch.nan_to_num(torch.multiply(torch.sqrt(torch.nan_to_num(torch.div(P_avg, (2 * self.alpha_server_G * SNR)), posinf=0.0, neginf=0.0)),torch.randn((min(Nc, Nd - i), 1))), posinf=0.0, neginf=0.0)
+                                  total_indicators[i:slice_end, :]).to(self.device)
+                term_a = torch.sqrt(torch.nan_to_num(torch.div(P_avg, (2 * self.alpha_server_G * SNR)), posinf=0.0, neginf=0.0)).to(self.device)
+                noise_term = torch.randn((min(Nc, Nd - i), 1)).to(self.device)
+                P_noise = torch.nan_to_num(torch.multiply(term_a, noise_term), posinf=0.0, neginf=0.0)
                 aggregated_grad[i:slice_end, :] = torch.add(
                     torch.nan_to_num(torch.div(aggregated_grad[i:slice_end, :],
                                                torch.sqrt(self.alpha_server_G) * total_indicators[i:slice_end, :]),
@@ -610,8 +621,8 @@ class Server(ServerBase):
 
         param_num_list = [param.numel() for param in self.model.parameters()]
         Nd = sum(param_num_list)
-        aggregated_hess = torch.zeros((Nd, 1))
-
+        aggregated_hess = torch.zeros((Nd, 1)).to(self.device)
+        
         with torch.no_grad():
 
 
@@ -621,6 +632,7 @@ class Server(ServerBase):
                 aggregated_hess += edge.h
 
 
+            aggregated_hess = torch.div(aggregated_hess, len(self.edges))
 
 
             layer_wise_hess = [x.view(y.shape).detach().clone() for x, y in zip(torch.split(aggregated_hess,
@@ -633,15 +645,19 @@ class Server(ServerBase):
     def aggregate_grads_sophia(self):
         param_num_list = [param.numel() for param in self.model.parameters()]
         Nd = sum(param_num_list)
-        aggregated_grad = torch.zeros((Nd, 1))
+        aggregated_grad = torch.zeros((Nd, 1)).to(self.device)
+
 
         with torch.no_grad():
 
             for j, edge in enumerate(self.edges):
 
                 # print(f"User: {j}, alpha: {alpha_users[j]}")
-
                 aggregated_grad += edge.m
+            
+
+            aggregated_grad = torch.div(aggregated_grad, len(self.edges))
+                
 
 
             layer_wise_grad = [x.view(y.shape).detach().clone() for x, y in zip(torch.split(aggregated_grad,
